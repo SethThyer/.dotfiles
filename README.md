@@ -14,3 +14,14 @@ a little rice here and there.
 
 Includes all wallpapers on my system.
 
+
+
+# Images
+
+![Image1](https://raw.githubusercontent.com/SethThyer/.dotfiles/main/READMEScreenshots/screenshot1.png)
+
+![Image2](https://raw.githubusercontent.com/SethThyer/.dotfiles/main/READMEScreenshots/screenshot2.png)
+
+![Image3](https://raw.githubusercontent.com/SethThyer/.dotfiles/main/READMEScreenshots/screenshot3.png)
+
+![Image4](https://raw.githubusercontent.com/SethThyer/.dotfiles/main/READMEScreenshots/screenshot4.png)
