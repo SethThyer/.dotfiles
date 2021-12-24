@@ -45,7 +45,7 @@ void replace(char *str, char old, char new)
 {
 	for(char * c = str; *c; c++)
 		if(*c == old)
-			*c = new;
+        *c = new;
 }
 
 // the previous function looked nice but unfortunately it didnt work if to_remove was in any position other than the last character
@@ -67,7 +67,7 @@ int gcd(int a, int b)
 	int temp;
 	while (b > 0){
 		temp = a % b;
-
+        
 		a = b;
 		b = temp;
 	}
@@ -144,10 +144,10 @@ void getsigcmds(int signal)
 void setupsignals()
 {
 	struct sigaction sa;
-
+    
 	for(int i = SIGRTMIN; i <= SIGRTMAX; i++)
 		signal(i, SIG_IGN);
-
+    
 	for(int i = 0; i < LENGTH(blocks); i++)
 	{
 		if (blocks[i].signal > 0)
@@ -160,11 +160,11 @@ void setupsignals()
 	sa.sa_flags = SA_SIGINFO;
 	sigaction(SIGUSR1, &sa, NULL);
 	struct sigaction sigchld_action = {
-  		.sa_handler = SIG_DFL,
-  		.sa_flags = SA_NOCLDWAIT
+        .sa_handler = SIG_DFL,
+        .sa_flags = SA_NOCLDWAIT
 	};
 	sigaction(SIGCHLD, &sigchld_action, NULL);
-
+    
 }
 #endif
 

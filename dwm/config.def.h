@@ -37,6 +37,9 @@ static const Rule rules[] = {
 	/* class      instance    title       tags mask     isfloating   monitor */
 	{ "Gimp",     NULL,       NULL,       0,            1,           -1 },
 	{ "Firefox",  NULL,       NULL,       1 << 8,       0,           -1 },
+	{ "discord",  NULL,       NULL,       0,            1,           -1 },
+    { "Steam",    NULL,       NULL,       0,            1,           -1 },
+	{ "zoom",     NULL,       NULL,       0,             1,           -1 }
 };
 
 /* layout(s) */
@@ -58,7 +61,7 @@ static const Layout layouts[] = {
 };
 
 /* key definitions */
-#define MODKEY Mod1Mask
+#define MODKEY Mod4Mask
 #define TAGKEYS(KEY,TAG) \
 { MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
 { MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
@@ -77,12 +80,8 @@ static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
 	{ MODKEY|ShiftMask,             XK_Return, spawn,          {.v = termcmd } },
-    
 	{ MODKEY,                       XK_b,      togglebar,      {0} },
     
-	{ MODKEY|ShiftMask,             XK_j,      rotatestack,    {.i = +1 } },
-	{ MODKEY|ShiftMask,             XK_k,      rotatestack,    {.i = -1 } },
-	
 	{ MODKEY,                       XK_j,      focusstack,     {.i = +1 } },
 	{ MODKEY,                       XK_k,      focusstack,     {.i = -1 } },
 	{ MODKEY,                       XK_c,      focusstack,     {.i = +1 } }, 
@@ -90,23 +89,22 @@ static Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_j,      rotatestack,    {.i = +1 } },
 	{ MODKEY|ShiftMask,             XK_k,      rotatestack,    {.i = -1 } },
 	{ MODKEY|ShiftMask,             XK_Tab,    rotatestack,    {.i = +1 } },
+	{ MODKEY|ShiftMask,             XK_v,      rotatestack,    {.i = -1 } },
+    
+	{ MODKEY|ControlMask,	   	XK_comma,  cyclelayout,    {.i = -1 } },
+	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
     
 	{ MODKEY,                       XK_i,      incnmaster,     {.i = +1 } },
 	{ MODKEY,                       XK_d,      incnmaster,     {.i = -1 } },
-    
 	{ MODKEY,                       XK_h,      setmfact,       {.f = -0.05} },
 	{ MODKEY,                       XK_l,      setmfact,       {.f = +0.05} },
-	{ MODKEY|ShiftMask,             XK_h,      setcfact,       {.f = +0.25} },
-	{ MODKEY|ShiftMask,             XK_l,      setcfact,       {.f = -0.25} },
-	{ MODKEY|ShiftMask,             XK_o,      setcfact,       {.f =  0.00} },
     
-    { MODKEY|ControlMask,	   	XK_comma,  cyclelayout,    {.i = -1 } },
-	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
     
 	{ MODKEY|Mod1Mask,              XK_h,      incrgaps,       {.i = +1 } },
 	{ MODKEY|Mod1Mask,              XK_l,      incrgaps,       {.i = -1 } },
 	{ MODKEY|Mod1Mask,              XK_0,      togglegaps,     {0} },
 	{ MODKEY|Mod1Mask|ShiftMask,    XK_0,      defaultgaps,    {0} },
+    
     
 	{ MODKEY,                       XK_Return, zoom,           {0} },
 	{ MODKEY,                       XK_Tab,    view,           {0} },
@@ -115,7 +113,6 @@ static Key keys[] = {
 	{ MODKEY,                       XK_f,      togglefullscr,  {0} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,      tag,            {.ui = ~0 } },
-    
     
     { MODKEY,                       XK_space,  setlayout,      {0} },
 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
@@ -126,11 +123,15 @@ static Key keys[] = {
 	{ MODKEY,                       XK_n,      setlayout,      {.v = &layouts[5]} },
 	{ MODKEY|ShiftMask,             XK_n,      setlayout,      {.v = &layouts[6]} },
     
-    
-    { MODKEY,                       XK_comma,  focusmon,       {.i = -1 } },
+	{ MODKEY,                       XK_comma,  focusmon,       {.i = -1 } },
 	{ MODKEY,                       XK_period, focusmon,       {.i = +1 } },
 	{ MODKEY|ShiftMask,             XK_comma,  tagmon,         {.i = -1 } },
 	{ MODKEY|ShiftMask,             XK_period, tagmon,         {.i = +1 } },
+	
+	{ MODKEY,                       XK_z,   viewtoleft,     {0} },
+	{ MODKEY,                       XK_x,  viewtoright,    {0} },
+	{ MODKEY|ShiftMask,             XK_z,   tagtoleft,      {0} },
+	{ MODKEY|ShiftMask,             XK_x,  tagtoright,     {0} },
     
 	TAGKEYS(                        XK_1,                      0)
         TAGKEYS(                        XK_2,                      1)
@@ -141,6 +142,7 @@ static Key keys[] = {
         TAGKEYS(                        XK_7,                      6)
         TAGKEYS(                        XK_8,                      7)
         TAGKEYS(                        XK_9,                      8)
+        
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
 };
 

@@ -52,10 +52,13 @@
 #define ISVISIBLEONTAG(C, T)    ((C->tags & T))
 #define ISVISIBLE(C)            ISVISIBLEONTAG(C, C->mon->tagset[C->mon->seltags])
 #define LENGTH(X)               (sizeof X / sizeof X[0])
+
+#define NUMTAGS                 (9)
+#define TOTALTAGS               (NUMTAGS)
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
 #define WIDTH(X)                ((X)->w + 2 * (X)->bw)
 #define HEIGHT(X)               ((X)->h + 2 * (X)->bw)
-#define TAGMASK                 ((1 << LENGTH(tags)) - 1)
+#define TAGMASK                 ((1 << TOTALTAGS) - 1)
 #define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
 
 /* enums */
@@ -224,6 +227,7 @@ static void incrihgaps(const Arg *arg);
 static void incrivgaps(const Arg *arg);
 static void togglegaps(const Arg *arg);
 static void defaultgaps(const Arg *arg);
+static void getgaps(Monitor *m, int *oh, int *ov, int *ih, int *iv, unsigned int *nc);
 static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
 static void setup(void);
@@ -269,6 +273,7 @@ static void bstack(Monitor *m);
 static void bstackhoriz(Monitor *m);
 
 /* variables */
+static const int smartgaps_fact          = 1;
 static const char broken[] = "broken";
 static char stext[256];
 static int screen;
@@ -308,11 +313,13 @@ static Window root, wmcheckwin;
 
 struct Pertag {
 	unsigned int curtag, prevtag; /* current and previous tag */
-	int nmasters[LENGTH(tags) + 1]; /* number of windows in master area */
-	float mfacts[LENGTH(tags) + 1]; /* mfacts per tag */
-	unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
-	const Layout *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
-	int showbars[LENGTH(tags) + 1]; /* display bar for the current tag */
+	int nmasters[NUMTAGS + 1]; /* number of windows in master area */
+	const Layout *ltidxs[NUMTAGS + 1][2]; /* matrix of tags and layouts indexes  */
+	float mfacts[NUMTAGS + 1]; /* mfacts per tag */
+	unsigned int sellts[NUMTAGS + 1]; /* selected layouts */
+	int showbars[NUMTAGS + 1]; /* display bar for the current tag */
+	int enablegaps[NUMTAGS + 1];
+	unsigned int gaps[NUMTAGS + 1];
 };
 
 /* compile-time check if all tags fit into an unsigned int bit array. */
@@ -713,6 +720,10 @@ createmon(void)
 		m->pertag->sellts[i] = m->sellt;
         
 		m->pertag->showbars[i] = m->showbar;
+        
+        m->pertag->enablegaps[i] = 1;
+		m->pertag->gaps[i] =
+        ((gappoh & 0xFF) << 0) | ((gappov & 0xFF) << 8) | ((gappih & 0xFF) << 16) | ((gappiv & 0xFF) << 24);
 	}
     
 	return m;
@@ -1213,19 +1224,96 @@ maprequest(XEvent *e)
 		manage(ev->window, &wa);
 }
 
+
+void
+pertagview(const Arg *arg)
+{
+	int i;
+	unsigned int tmptag;
+	if (arg->ui & TAGMASK) {
+		selmon->pertag->prevtag = selmon->pertag->curtag;
+		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+		if (arg->ui == ~0)
+            selmon->pertag->curtag = 0;
+		else {
+			for (i = 0; !(arg->ui & 1 << i); i++) ;
+			selmon->pertag->curtag = i + 1;
+		}
+	} else {
+		tmptag = selmon->pertag->prevtag;
+		selmon->pertag->prevtag = selmon->pertag->curtag;
+		selmon->pertag->curtag = tmptag;
+	}
+	selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
+	selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
+	selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
+	selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
+	selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
+    
+	selmon->gappoh = (selmon->pertag->gaps[selmon->pertag->curtag] & 0xff) >> 0;
+	selmon->gappov = (selmon->pertag->gaps[selmon->pertag->curtag] & 0xff00) >> 8;
+	selmon->gappih = (selmon->pertag->gaps[selmon->pertag->curtag] & 0xff0000) >> 16;
+	selmon->gappiv = (selmon->pertag->gaps[selmon->pertag->curtag] & 0xff000000) >> 24;
+    
+	if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
+		togglebar(NULL);
+}
+
+void
+getfacts(Monitor *m, int msize, int ssize, float *mf, float *sf, int *mr, int *sr)
+{
+	unsigned int n;
+	float mfacts, sfacts;
+	int mtotal = 0, stotal = 0;
+	Client *c;
+    
+	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	mfacts = MIN(n, m->nmaster);
+	sfacts = n - m->nmaster;
+    
+	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++){
+		if (n < m->nmaster)
+            mtotal += msize / mfacts;
+        else
+            stotal += ssize / sfacts;
+    }
+    
+	*mf = mfacts; // total factor of master area
+	*sf = sfacts; // total factor of stack area
+	*mr = msize - mtotal; // the remainder (rest) of pixels after an even master split
+	*sr = ssize - stotal; // the remainder (rest) of pixels after an even stack split
+}
+
+static void
+getgaps(Monitor *m, int *oh, int *ov, int *ih, int *iv, unsigned int *nc)
+{
+	unsigned int n, oe, ie;
+	oe = ie = selmon->pertag->enablegaps[selmon->pertag->curtag];
+	Client *c;
+    
+	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	if (n == 1 && smartgaps) {
+		oe *= smartgaps_fact; // outer gaps disabled or multiplied when only one client
+	}
+    
+	*oh = m->gappoh*oe; // outer horizontal gap
+	*ov = m->gappov*oe; // outer vertical gap
+	*ih = m->gappih*ie; // inner horizontal gap
+	*iv = m->gappiv*ie; // inner vertical gap
+	*nc = n;            // number of clients
+}
+
 void
 monocle(Monitor *m)
 {
-	unsigned int n = 0;
+    unsigned int n;
+	int oh, ov, ih, iv;
 	Client *c;
     
-	for (c = m->clients; c; c = c->next)
-		if (ISVISIBLE(c))
-        n++;
-	if (n > 0) /* override layout symbol */
-		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%d]", n);
+	getgaps(m, &oh, &ov, &ih, &iv, &n);
+    
 	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		resize(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 0);
+		resize(c, m->wx + ov, m->wy + oh, m->ww - 2 * c->bw - 2 * ov, m->wh - 2 * c->bw - 2 * oh, 0);
 }
 
 void
@@ -1692,14 +1780,17 @@ setgaps(int oh, int ov, int ih, int iv)
 	selmon->gappov = ov;
 	selmon->gappih = ih;
 	selmon->gappiv = iv;
-	arrange(selmon);
+	
+    selmon->pertag->gaps[selmon->pertag->curtag] = ((oh & 0xFF) << 0) | ((ov & 0xFF) << 8) | ((ih & 0xFF) << 16) | ((iv & 0xFF) << 24);
+    
+    arrange(selmon);
 }
 
 void
 togglegaps(const Arg *arg)
 {
-	enablegaps = !enablegaps;
-	arrange(selmon);
+    selmon->pertag->enablegaps[selmon->pertag->curtag] = !selmon->pertag->enablegaps[selmon->pertag->curtag];
+	arrange(NULL);
 }
 
 void
@@ -1958,7 +2049,7 @@ tagmon(const Arg *arg)
 		return;
 	sendmon(selmon->sel, dirtomon(arg->i));
 }
-
+/*
 void
 tile(Monitor *m)
 {
@@ -1990,6 +2081,49 @@ tile(Monitor *m)
         ty += HEIGHT(c) + m->gappih*ie;
     }
 }
+*/
+
+static void
+tile(Monitor *m)
+{
+	unsigned int i, n;
+	int mx = 0, my = 0, mh = 0, mw = 0;
+	int sx = 0, sy = 0, sh = 0, sw = 0;
+	float mfacts, sfacts;
+	int mrest, srest;
+	Client *c;
+    
+    
+	int oh, ov, ih, iv;
+	getgaps(m, &oh, &ov, &ih, &iv, &n);
+    
+	if (n == 0)
+		return;
+    
+	sx = mx = m->wx + ov;
+	sy = my = m->wy + oh;
+	mh = m->wh - 2*oh - ih * (MIN(n, m->nmaster) - 1);
+	sh = m->wh - 2*oh - ih * (n - m->nmaster - 1);
+	sw = mw = m->ww - 2*ov;
+    
+	if (m->nmaster && n > m->nmaster) {
+		sw = (mw - iv) * (1 - m->mfact);
+		mw = (mw - iv) * m->mfact;
+		sx = mx + mw + iv;
+	}
+    
+	getfacts(m, mh, sh, &mfacts, &sfacts, &mrest, &srest);
+    
+	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+		if (i < m->nmaster) {
+        resize(c, mx, my, mw - (2*c->bw), (mh / mfacts) + (i < mrest ? 1 : 0) - (2*c->bw), 0);
+        my += HEIGHT(c) + ih;
+    } else {
+        resize(c, sx, sy, sw - (2*c->bw), (sh / sfacts) + ((i - m->nmaster) < srest ? 1 : 0) - (2*c->bw), 0);
+        sy += HEIGHT(c) + ih;
+    }
+}
+
 
 void
 togglebar(const Arg *arg)
@@ -2398,81 +2532,51 @@ view(const Arg *arg)
 
 void
 viewtoleft(const Arg *arg) {
-    int i;
-    unsigned int tmptag;
-    
-	if(__builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
-       && selmon->tagset[selmon->seltags] > 1) {
+    if (__builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
+        && selmon->tagset[selmon->seltags] > 1) {
 		selmon->seltags ^= 1; /* toggle sel tagset */
-		selmon->tagset[selmon->seltags] = selmon->tagset[selmon->seltags ^ 1] >> 1;
-        
-        if (arg->ui & TAGMASK) {
-            selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
-            selmon->pertag->prevtag = selmon->pertag->curtag;
-            
-            if (arg->ui == ~0)
-                selmon->pertag->curtag = 0;
-            else {
-                for (i = 0; !(arg->ui & 1 << i); i++) ;
-                selmon->pertag->curtag = i + 1;
-            }
-        } else {
-            tmptag = selmon->pertag->prevtag;
-            selmon->pertag->prevtag = selmon->pertag->curtag;
-            selmon->pertag->curtag = tmptag;
-        }
-        
-        selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
-        selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
-        selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
-        selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
-        selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
-        
-        if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
-            togglebar(NULL);
-        
-        focus(NULL);
-        arrange(selmon);
+		pertagview(&((Arg) { .ui = selmon->tagset[selmon->seltags ^ 1] >> 1 }));
+		focus(NULL);
+		arrange(selmon);
 	}
 }
 
 void
 viewtoright(const Arg *arg) {
-    int i;
-    unsigned int tmptag;
-    
-	if(__builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
-       && selmon->tagset[selmon->seltags] & (TAGMASK >> 1)) {
+    if (__builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
+        && selmon->tagset[selmon->seltags] & (TAGMASK >> 1)) {
 		selmon->seltags ^= 1; /* toggle sel tagset */
-		selmon->tagset[selmon->seltags] = selmon->tagset[selmon->seltags ^ 1] << 1;
-        
-        if (arg->ui & TAGMASK) {
-            selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
-            selmon->pertag->prevtag = selmon->pertag->curtag;
-            
-            if (arg->ui == ~0)
-                selmon->pertag->curtag = 0;
-            else {
-                for (i = 0; !(arg->ui & 1 << i); i++) ;
-                selmon->pertag->curtag = i + 1;
-            }
-        } else {
-            tmptag = selmon->pertag->prevtag;
-            selmon->pertag->prevtag = selmon->pertag->curtag;
-            selmon->pertag->curtag = tmptag;
-        }
-        
-        selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
-        selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
-        selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
-        selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
-        selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
-        
-        if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
-            togglebar(NULL);
-        
-        focus(NULL);
-        arrange(selmon);
+		pertagview(&((Arg) { .ui = selmon->tagset[selmon->seltags ^ 1] << 1 }));
+		focus(NULL);
+		arrange(selmon);
+	}
+}
+
+void
+tagandviewtoleft(const Arg *arg)
+{
+	if (selmon->sel != NULL
+        && __builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
+        && selmon->tagset[selmon->seltags] > 1) {
+		selmon->sel->tags >>= 1;
+		selmon->seltags ^= 1; /* toggle sel tagset */
+		pertagview(&((Arg) { .ui = selmon->tagset[selmon->seltags ^ 1] >> 1 }));
+		focus(selmon->sel);
+		arrange(selmon);
+	}
+}
+
+void
+tagandviewtoright(const Arg *arg)
+{
+	if (selmon->sel != NULL
+        && __builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
+        && selmon->tagset[selmon->seltags] & (TAGMASK >> 1)) {
+		selmon->sel->tags <<= 1;
+		selmon->seltags ^= 1; /* toggle sel tagset */
+		pertagview(&((Arg) { .ui = selmon->tagset[selmon->seltags ^ 1] << 1 }));
+		focus(selmon->sel);
+		arrange(selmon);
 	}
 }
 
@@ -2584,54 +2688,89 @@ main(int argc, char *argv[])
 void
 centeredmaster(Monitor *m)
 {
-	unsigned int i, n, h, mw, mx, my, oty, ety, tw;
+    unsigned int i, n;
+	int mx = 0, my = 0, mh = 0, mw = 0;
+	int lx = 0, ly = 0, lw = 0, lh = 0;
+	int rx = 0, ry = 0, rw = 0, rh = 0;
+	float mfacts = 0, lfacts = 0, rfacts = 0;
+	int mtotal = 0, ltotal = 0, rtotal = 0;
+	int mrest = 0, lrest = 0, rrest = 0;
 	Client *c;
     
-	/* count number of clients in the selected monitor */
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	int oh, ov, ih, iv;
+	getgaps(m, &oh, &ov, &ih, &iv, &n);
+    
 	if (n == 0)
 		return;
     
 	/* initialize areas */
-	mw = m->ww;
-	mx = 0;
-	my = 0;
-	tw = mw;
+	mx = m->wx + ov;
+	my = m->wy + oh;
+	mh = m->wh - 2*oh - ih * ((!m->nmaster ? n : MIN(n, m->nmaster)) - 1);
+	mw = m->ww - 2*ov;
+	lh = m->wh - 2*oh - ih * (((n - m->nmaster) / 2) - 1);
+	rh = m->wh - 2*oh - ih * (((n - m->nmaster) / 2) - ((n - m->nmaster) % 2 ? 0 : 1));
     
-	if (n > m->nmaster) {
+	if (m->nmaster && n > m->nmaster) {
 		/* go mfact box in the center if more than nmaster clients */
-		mw = m->nmaster ? m->ww * m->mfact : 0;
-		tw = m->ww - mw;
-        
 		if (n - m->nmaster > 1) {
-			/* only one client */
-			mx = (m->ww - mw) / 2;
-			tw = (m->ww - mw) / 2;
+			/* ||<-S->|<---M--->|<-S->|| */
+			mw = (m->ww - 2*ov - 2*iv) * m->mfact;
+			lw = (m->ww - mw - 2*ov - 2*iv) / 2;
+			mx += lw + iv;
+		} 
+        else {
+			/* ||<---M--->|<-S->|| */
+			mw = (mw - iv) * m->mfact;
+			lw = m->ww - mw - iv - 2*ov;
 		}
+		rw = lw;
+		lx = m->wx + ov;
+		ly = m->wy + oh;
+		rx = mx + mw + iv;
+		ry = m->wy + oh;
 	}
     
-	oty = 0;
-	ety = 0;
-	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
-        if (i < m->nmaster) {
-		/* nmaster clients are stacked vertically, in the center
-		 * of the screen */
-		h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-		resize(c, m->wx + mx, m->wy + my, mw - (2*c->bw),
-		       h - (2*c->bw), 0);
-		my += HEIGHT(c);
-	} else {
-		/* stack clients are stacked vertically */
-		if ((i - m->nmaster) % 2 ) {
-			h = (m->wh - ety) / ( (1 + n - i) / 2);
-			resize(c, m->wx, m->wy + ety, tw - (2*c->bw),
-			       h - (2*c->bw), 0);
-			ety += HEIGHT(c);
+	/* calculate facts */
+	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
+		if (!m->nmaster || n < m->nmaster)
+			mfacts += 1;
+		else if ((n - m->nmaster) % 2)
+			lfacts += 1; // total factor of left hand stack area
+		else
+			rfacts += 1; // total factor of right hand stack area
+	}
+    
+	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
+		if (!m->nmaster || n < m->nmaster) {
+            mtotal += mh / mfacts;
+        }
+        else if ((n - m->nmaster) % 2) {
+            ltotal += lh / lfacts;
+        }
+        else {
+            rtotal += rh / rfacts;
+        }
+    }
+    
+	mrest = mh - mtotal;
+	lrest = lh - ltotal;
+	rrest = rh - rtotal;
+    
+	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
+		if (!m->nmaster || i < m->nmaster) {
+			/* nmaster clients are stacked vertically, in the center of the screen */
+			resize(c, mx, my, mw - (2*c->bw), (mh / mfacts) + (i < mrest ? 1 : 0) - (2*c->bw), 0);
+			my += HEIGHT(c) + ih;
 		} else {
-			h = (m->wh - oty) / ((1 + n - i) / 2);
-			resize(c, m->wx + mx + mw, m->wy + oty,
-			       tw - (2*c->bw), h - (2*c->bw), 0);
-			oty += HEIGHT(c);
+			/* stack clients are stacked vertically */
+			if ((i - m->nmaster) % 2 ) {
+				resize(c, lx, ly, lw - (2*c->bw), (lh / lfacts) + ((i - 2*m->nmaster) < 2*lrest ? 1 : 0) - (2*c->bw), 0);
+				ly += HEIGHT(c) + ih;
+			} else {
+				resize(c, rx, ry, rw - (2*c->bw), (rh / rfacts) + ((i - 2*m->nmaster) < 2*rrest ? 1 : 0) - (2*c->bw), 0);
+				ry += HEIGHT(c) + ih;
+			}
 		}
 	}
 }
@@ -2639,109 +2778,141 @@ centeredmaster(Monitor *m)
 void
 centeredfloatingmaster(Monitor *m)
 {
-	unsigned int i, n, w, mh, mw, mx, mxo, my, myo, tx;
+    unsigned int i, n;
+	float mfacts, sfacts;
+	int mrest, srest;
+	int mx = 0, my = 0, mh = 0, mw = 0;
+	int sx = 0, sy = 0, sh = 0, sw = 0;
 	Client *c;
     
-	/* count number of clients in the selected monitor */
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	float mivf = 1.0; // master inner vertical gap factor
+	int oh, ov, ih, iv;
+	getgaps(m, &oh, &ov, &ih, &iv, &n);
+    
 	if (n == 0)
 		return;
     
-	/* initialize nmaster area */
-	if (n > m->nmaster) {
+	sx = mx = m->wx + ov;
+	sy = my = m->wy + oh;
+	sh = mh = m->wh - 2*oh;
+	mw = m->ww - 2*ov - iv*(n - 1);
+	sw = m->ww - 2*ov - iv*(n - m->nmaster - 1);
+    
+	if (m->nmaster && n > m->nmaster) {
+		mivf = 0.8;
 		/* go mfact box in the center if more than nmaster clients */
 		if (m->ww > m->wh) {
-			mw = m->nmaster ? m->ww * m->mfact : 0;
-			mh = m->nmaster ? m->wh * 0.9 : 0;
+			mw = m->ww * m->mfact - iv*mivf*(MIN(n, m->nmaster) - 1);
+			mh = m->wh * 0.9;
 		} else {
-			mh = m->nmaster ? m->wh * m->mfact : 0;
-			mw = m->nmaster ? m->ww * 0.9 : 0;
+			mw = m->ww * 0.9 - iv*mivf*(MIN(n, m->nmaster) - 1);
+			mh = m->wh * m->mfact;
 		}
-		mx = mxo = (m->ww - mw) / 2;
-		my = myo = (m->wh - mh) / 2;
-	} else {
-		/* go fullscreen if all clients are in the master area */
-		mh = m->wh;
-		mw = m->ww;
-		mx = mxo = 0;
-		my = myo = 0;
+		mx = m->wx + (m->ww - mw) / 2;
+		my = m->wy + (m->wh - mh - 2*oh) / 2;
+        
+		sx = m->wx + ov;
+		sy = m->wy + oh;
+		sh = m->wh - 2*oh;
 	}
     
-	for(i = tx = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
-        if (i < m->nmaster) {
-		/* nmaster clients are stacked horizontally, in the center
-		 * of the screen */
-		w = (mw + mxo - mx) / (MIN(n, m->nmaster) - i);
-		resize(c, m->wx + mx, m->wy + my, w - (2*c->bw),
-		       mh - (2*c->bw), 0);
-		mx += WIDTH(c);
-	} else {
-		/* stack clients are stacked horizontally */
-		w = (m->ww - tx) / (n - i);
-		resize(c, m->wx + tx, m->wy, w - (2*c->bw),
-		       m->wh - (2*c->bw), 0);
-		tx += WIDTH(c);
-	}
+	getfacts(m, mw, sw, &mfacts, &sfacts, &mrest, &srest);
+    
+	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+		if (i < m->nmaster) {
+        /* nmaster clients are stacked horizontally, in the center of the screen */
+        resize(c, mx, my, (mw / mfacts) + (i < mrest ? 1 : 0) - (2*c->bw), mh - (2*c->bw), 0);
+        mx += WIDTH(c) + iv*mivf;
+    } else {
+        /* stack clients are stacked horizontally */
+        resize(c, sx, sy, (sw / sfacts) + ((i - m->nmaster) < srest ? 1 : 0) - (2*c->bw), sh - (2*c->bw), 0);
+        sx += WIDTH(c) + iv;
+    }
 }
 
 static void
 bstack(Monitor *m) {
-	int w, h, mh, mx, tx, ty, tw;
 	unsigned int i, n;
+	int mx = 0, my = 0, mh = 0, mw = 0;
+	int sx = 0, sy = 0, sh = 0, sw = 0;
+	float mfacts, sfacts;
+	int mrest, srest;
 	Client *c;
     
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	int oh, ov, ih, iv;
+	getgaps(m, &oh, &ov, &ih, &iv, &n);
+    
 	if (n == 0)
 		return;
-	if (n > m->nmaster) {
-		mh = m->nmaster ? m->mfact * m->wh : 0;
-		tw = m->ww / (n - m->nmaster);
-		ty = m->wy + mh;
-	} else {
-		mh = m->wh;
-		tw = m->ww;
-		ty = m->wy;
+    
+	sx = mx = m->wx + ov;
+	sy = my = m->wy + oh;
+	sh = mh = m->wh - 2*oh;
+	mw = m->ww - 2*ov - iv * (MIN(n, m->nmaster) - 1);
+	sw = m->ww - 2*ov - iv * (n - m->nmaster - 1);
+    
+	if (m->nmaster && n > m->nmaster) {
+		sh = (mh - ih) * (1 - m->mfact);
+		mh = (mh - ih) * m->mfact;
+		sx = mx;
+		sy = my + mh + ih;
 	}
-	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
+    
+	getfacts(m, mw, sw, &mfacts, &sfacts, &mrest, &srest);
+    
+	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
 		if (i < m->nmaster) {
-			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 0);
-			mx += WIDTH(c);
+			resize(c, mx, my, (mw / mfacts) + (i < mrest ? 1 : 0) - (2*c->bw), mh - (2*c->bw), 0);
+			mx += WIDTH(c) + iv;
 		} else {
-			h = m->wh - mh;
-			resize(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw), 0);
-			if (tw != m->ww)
-				tx += WIDTH(c);
+			resize(c, sx, sy, (sw / sfacts) + ((i - m->nmaster) < srest ? 1 : 0) - (2*c->bw), sh - (2*c->bw), 0);
+			sx += WIDTH(c) + iv;
 		}
 	}
 }
 
 static void
 bstackhoriz(Monitor *m) {
-	int w, mh, mx, tx, ty, th;
-	unsigned int i, n;
+    unsigned int i, n;
+	int mx = 0, my = 0, mh = 0, mw = 0;
+	int sx = 0, sy = 0, sh = 0, sw = 0;
+	float mfacts, sfacts;
+	int mrest, srest;
 	Client *c;
     
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+    
+	int oh, ov, ih, iv;
+	getgaps(m, &oh, &ov, &ih, &iv, &n);
+    
+    
 	if (n == 0)
 		return;
-	if (n > m->nmaster) {
-		mh = m->nmaster ? m->mfact * m->wh : 0;
-		th = (m->wh - mh) / (n - m->nmaster);
-		ty = m->wy + mh;
-	} else {
-		th = mh = m->wh;
-		ty = m->wy;
+    
+    
+	sx = mx = m->wx + ov;
+	sy = my = m->wy + oh;
+	mh = m->wh - 2*oh;
+	sh = m->wh - 2*oh - ih * (n - m->nmaster - 1);
+	mw = m->ww - 2*ov - iv * (MIN(n, m->nmaster) - 1);
+	sw = m->ww - 2*ov;
+    
+	if (m->nmaster && n > m->nmaster) {
+		sh = (mh - ih) * (1 - m->mfact);
+		mh = (mh - ih) * m->mfact;
+		sy = my + mh + ih;
+		sh = m->wh - mh - 2*oh - ih * (n - m->nmaster);
 	}
-	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
+    
+    
+	getfacts(m, mw, sh, &mfacts, &sfacts, &mrest, &srest);
+    
+	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
 		if (i < m->nmaster) {
-			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 0);
-			mx += WIDTH(c);
+			resize(c, mx, my, (mw / mfacts) + (i < mrest ? 1 : 0) - (2*c->bw), mh - (2*c->bw), 0);
+			mx += WIDTH(c) + iv;
 		} else {
-			resize(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw), 0);
-			if (th != m->wh)
-				ty += HEIGHT(c);
+			resize(c, sx, sy, sw - (2*c->bw), (sh / sfacts) + ((i - m->nmaster) < srest ? 1 : 0) - (2*c->bw), 0);
+			sy += HEIGHT(c) + ih;
 		}
 	}
 }

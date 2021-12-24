@@ -4,7 +4,7 @@ static const Block blocks[] = {
 	/* {"⌨", "sb-kbselect", 0, 30}, */
 	//{"", "cat /tmp/recordingicon 2>/dev/null",	0,	9},
 	//{"",	"sb-tasks",	10,	26},
-//	{"",	"sb-pacpackages",	0,	8},
+    //	{"",	"sb-pacpackages",	0,	8},
 	//{"",	"sb-news",		0,	6},
 	/* {"",	"sb-price lbc \"LBRY Token\" 📚",			9000,	22}, */
 	/* {"",	"sb-price bat \"Basic Attention Token\" 🦁",	9000,	20}, */
@@ -16,19 +16,19 @@ static const Block blocks[] = {
 	/* {"",	"sb-memory",	10,	14}, */
 	/* {"",	"sb-cpu",		10,	18}, */
 	/* {"",	"sb-moonphase",	18000,	17}, */
-//	{"",	"sb-mailbox",	180,	12},
-//	{"",	"sb-internet",	5,	4},
-//	{"",	"sb-battery",	5,	31},
+    //	{"",	"sb-mailbox",	180,	12},
+    //	{"",	"sb-internet",	5,	4},
+    //	{"",	"sb-battery",	5,	31},
 	{"",	"sb-music",  	1,	0},
-	{"",	"sb-forecast",	18000,	5},
-	{"",	"sb-nettraf",	1,	16},
-//	{"",	"sb-volume",	100,	10},
-	{"",	"sb-clock",	30,	1},
-//	{"",	"sb-help-icon",	0,	15},
+	{"",	"sb-forecast",	18000,	0},
+	{"",	"sb-nettraf",	1,	0},
+    //	{"",	"sb-volume",	100,	10},
+	{"",	"sb-clock",	30,	0},
+    //	{"",	"sb-help-icon",	0,	15},
 };
 
 //Sets delimiter between status commands. NULL character ('\0') means no delimiter.
-static char *delim = "  ||  ";
+static char *delim = "|    |";
 
 // Have dwmblocks automatically recompile and run when you edit this file in
 // vim with the following line in your vimrc/init.vim:
