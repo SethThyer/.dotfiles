@@ -1,0 +1,44 @@
+# vim: filetype=conf
+
+[header]
+header_visibility = "yes"
+header_window_color = "default"
+volume_color = "green"
+state_line_color = "9"
+lyrics_directory  = ~/.ncmpcpp/lyrics
+[playlist]
+playlist_display_mode = "classic"
+song_list_format = "{{%a - %t}|{%f}}{$R%l}"
+now_playing_prefix = "$b$5"
+now_playing_suffix = "$/b$9"
+browser_playlist_prefix = "$1»$1 "
+
+[visualizer]
+visualizer_data_source = "/tmp/mpd.fifo"
+visualizer_output_name = "my_fifo"
+visualizer_in_stereo = "yes"
+visualizer_type = "spectrum"
+visualizer_look = "+|"
+
+[statusbar]
+progressbar_look = "━━━"
+progressbar_color = "9"
+statusbar_visibility = "yes"
+progressbar_elapsed_color = "cyan"
+statusbar_color = "3"
+song_status_format = "{%t - %a}"
+
+[library]
+song_library_format = "{{%a - %t}|{%f}}{$R%l}"
+empty_tag_color = "9"
+
+[global]
+colors_enabled = "yes"
+mpd_music_dir = ~/Music
+main_window_color = "default"
+centered_cursor = "yes"
+enable_window_title = "yes"
+external_editor = "nvim"
+#execute_on_song_change = ~/.ncmpcpp/notify.sh
+execute_on_player_state_change = ~/.ncmpcpp/notify.sh
+startup_screen = "playlist"

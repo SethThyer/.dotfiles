@@ -1,0 +1,6 @@
+#!/bin/sh
+FILE="$(ls /home/seth/Wallpapers/Use | shuf -n 1)"
+FILEPRE="/home/seth/Wallpapers/Use/"
+
+notify-send -i "$FILEPRE$FILE" -u "Low" 'Wallpaper set to:' $FILE
+feh --no --bg-fill --randomize --recursive $FILEPRE$FILE

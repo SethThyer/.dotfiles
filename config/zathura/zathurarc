@@ -1,0 +1,16 @@
+
+set selection-clipboard selection
+
+map i recolor
+
+set font "Code New Roman 12"
+set statusbar-bg "#1F1F1F"
+set default-bg   "#222222"
+set default-fg   "#F7F7F6"
+
+set recolor "true"
+set recolor-lightcolor "#222222"
+set recolor-darkcolor  "E0E0E0"
+set recolor-reverse-video "true"
+set recolor-keephue "true"
+

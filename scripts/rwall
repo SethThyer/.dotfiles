@@ -1,0 +1,13 @@
+#!/bin/sh
+selectFile () {
+  FILE="$(ls -RD /home/seth/Wallpapers | shuf -n 1)"
+
+  if [[ "${FILE::2}" = "./" ]]; then
+    selectFile
+  fi
+}
+selectFile
+FILEPATH="$(find /home/seth/Wallpapers -name $FILE)"
+
+notify-send -i "$FILEPATH" -u "Low" 'Wallpaper set to:' $FILE
+feh --bg-fill --randomize --recursive $FILEPATH

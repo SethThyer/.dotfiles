@@ -1,0 +1,8 @@
+#/bin/sh
+RUNNING="$(pgrep -l picom)"
+
+if [ "$RUNNING" == "" ]; then
+	picom --experimental-backends --backend glx --xrender-sync-fence &
+else
+	killall picom
+fi

@@ -1,0 +1,12 @@
+#!/bin/sh
+echo "Is this a playlist? [Y/n]"
+read IN
+COMMAND="youtube-dl -f ogg,m4a --yes-playlist -o '%(title)s.%(ext)s' "
+
+if [[ $IN = "n" ]]; then
+  COMMAND="youtube-dl -f ogg,m4a -o %(title)s.%(ext)s "
+fi
+echo "What is the URL?"
+read URL
+$COMMAND $URL
+

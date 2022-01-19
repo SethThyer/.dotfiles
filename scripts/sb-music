@@ -1,0 +1,17 @@
+#!/bin/sh
+
+DATA=$(mpc current)
+STATUS=$(mpc status %state%)
+
+
+if [[ $(playerctl status) =~ "No players found" ]]; then
+	DATA=$(playerctl --player=$PLAYER metadata --format "{{title}} -{{artist}}")
+	STATUS=$(playerctl --player=$PLAYER status 2>/dev/null) 
+fi
+
+
+if [[ "$STATUS" = "Playing" || "$STATUS" = "playing" ]]; then
+	echo -n "| ⏩ |" ; echo $DATA | scroll
+else
+	echo -n "| ⏸ |" ; echo $DATA | scroll
+fi
